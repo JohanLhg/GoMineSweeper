@@ -10,7 +10,8 @@ import (
 )
 
 type Tile struct {
-	isBomb bool
+	isBomb      bool
+	nearbyBombs int
 }
 
 var RandomGenerator = rand.New(rand.NewSource(3))
@@ -36,22 +37,30 @@ func generateGrid(size int, bombCount int) [][]Tile {
 		return nil
 	}
 
-	matrix := make([][]Tile, size)
-	for i := range matrix {
-		matrix[i] = make([]Tile, size)
+	grid := make([][]Tile, size)
+	for i := range grid {
+		grid[i] = make([]Tile, size)
 	}
 
-	bombsPlaced := 0
-	for bombsPlaced < bombCount {
-		i := RandomGenerator.Intn(size)
-		j := RandomGenerator.Intn(size)
-		if !matrix[i][j].isBomb {
-			matrix[i][j].isBomb = true
-			bombsPlaced++
+	var bombTiles [][]int
+	for len(bombTiles) < bombCount {
+		x := RandomGenerator.Intn(size)
+		y := RandomGenerator.Intn(size)
+		if !grid[x][y].isBomb {
+			grid[x][y].isBomb = true
+			bombTiles = append(bombTiles, []int{x, y})
 		}
 	}
 
-	return matrix
+	for _, coords := range bombTiles {
+		forEachNeighbour(grid, coords[0], coords[1], func(x, y int) {
+			tile := grid[x][y]
+			tile.nearbyBombs++
+			grid[x][y] = tile
+		})
+	}
+
+	return grid
 }
 
 func forEachNeighbour(grid [][]Tile, x int, y int, action func(x int, y int)) {
@@ -115,16 +124,15 @@ func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, sh
 		print(strings.Repeat("-", size*4+1))
 		print("\n|")
 		for y, tile := range column {
-			nearbyBombs := countNearbyBombs(grid, x, y)
 			if !showAll && isFlagged(flaggedTiles, x, y) {
 				print(" ⚑ ")
 			} else if !showAll && !isUncovered(uncoveredTiles, x, y) {
 				print("███")
 			} else if tile.isBomb {
 				print(" X ")
-			} else if nearbyBombs != 0 {
+			} else if tile.nearbyBombs != 0 {
 				print(" ")
-				print(nearbyBombs)
+				print(tile.nearbyBombs)
 				print(" ")
 			} else {
 				print("   ")
@@ -182,15 +190,17 @@ func flagTiles(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int) [][]
 	newFlag := true
 	for newFlag {
 		newFlag = false
-		for _, tile := range uncoveredTiles {
-			x := tile[0]
-			y := tile[1]
+		for _, coords := range uncoveredTiles {
+			x := coords[0]
+			y := coords[1]
 
-			if countNearbyBombs(grid, x, y) == 0 {
+			tile := grid[x][y]
+
+			if tile.nearbyBombs == 0 {
 				continue
 			}
 
-			if len(getNeighboursLeft(grid, uncoveredTiles, x, y)) == countNearbyBombs(grid, x, y) {
+			if len(getNeighboursLeft(grid, uncoveredTiles, x, y)) == tile.nearbyBombs {
 				forEachNeighbour(grid, x, y, func(x, y int) {
 					if !isUncovered(uncoveredTiles, x, y) && !isFlagged(flaggedTiles, x, y) {
 						newFlag = true
@@ -204,15 +214,17 @@ func flagTiles(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int) [][]
 }
 
 func getFirstSafeTile(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int) []int {
-	for _, tile := range uncoveredTiles {
-		x := tile[0]
-		y := tile[1]
+	for _, coords := range uncoveredTiles {
+		x := coords[0]
+		y := coords[1]
 
-		if countNearbyBombs(grid, x, y) == 0 {
+		tile := grid[x][y]
+
+		if tile.nearbyBombs == 0 {
 			continue
 		}
 
-		if countNearbyBombs(grid, x, y) == len(getNearbyFlaggedBombs(grid, flaggedTiles, x, y)) &&
+		if tile.nearbyBombs == len(getNearbyFlaggedBombs(grid, flaggedTiles, x, y)) &&
 			len(getNeighboursLeft(grid, uncoveredTiles, x, y)) > len(getNearbyFlaggedBombs(grid, flaggedTiles, x, y)) {
 			neighbours := getNeighboursLeft(grid, uncoveredTiles, x, y)
 			for _, tile := range neighbours {
@@ -230,8 +242,9 @@ func getFirstSafeTile(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]in
 
 func uncoverTile(grid [][]Tile, uncoveredTiles [][]int, x int, y int) [][]int {
 	uncoveredTiles = append(uncoveredTiles, []int{x, y})
+	tile := grid[x][y]
 
-	if countNearbyBombs(grid, x, y) > 0 {
+	if tile.nearbyBombs > 0 {
 		return uncoveredTiles
 	}
 
@@ -242,16 +255,4 @@ func uncoverTile(grid [][]Tile, uncoveredTiles [][]int, x int, y int) [][]int {
 	})
 
 	return uncoveredTiles
-}
-
-func countNearbyBombs(grid [][]Tile, x int, y int) int {
-	nearbyBombs := 0
-
-	forEachNeighbour(grid, x, y, func(nx int, ny int) {
-		if grid[nx][ny].isBomb {
-			nearbyBombs++
-		}
-	})
-
-	return nearbyBombs
 }
