@@ -13,9 +13,9 @@ func BenchmarkGenerateGrid(b *testing.B) {
 
 func BenchmarkSolve(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		RandomGenerator = rand.New(rand.NewSource(3))
-		grid := generateGrid(25, 75)
-		solve(grid, 75)
+		RandomGenerator = rand.New(rand.NewSource(1))
+		grid := generateGrid(25, 600)
+		solve(grid, 600)
 	}
 }
 
@@ -28,4 +28,3 @@ func BenchmarkSolve(b *testing.B) {
 // http://localhost:6060/debug/pprof/heap ← pour profiler la mémoire
 
 // go test -bench=. -benchmem
-
