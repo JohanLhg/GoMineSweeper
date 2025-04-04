@@ -4,14 +4,17 @@ import (
 	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
-	"reflect"
 	"strings"
 	"time"
 )
 
 type Tile struct {
 	isBomb      bool
+	isUncovered bool
+	isFlagged   bool
 	nearbyBombs int
+	x           int
+	y           int
 }
 
 var RandomGenerator = rand.New(rand.NewSource(3))
@@ -26,7 +29,7 @@ func main() {
 	size := 25
 	bombCount := 75
 	grid := generateGrid(size, bombCount)
-	//displayGrid(grid, [][]int{}, [][]int{}, true)
+	//displayGrid(grid, true)
 	solve(grid, bombCount)
 
 	time.Sleep(30 * time.Second)
@@ -38,95 +41,92 @@ func generateGrid(size int, bombCount int) [][]Tile {
 	}
 
 	grid := make([][]Tile, size)
-	for i := range grid {
-		grid[i] = make([]Tile, size)
+
+	for x := range size {
+		grid[x] = make([]Tile, size)
+		for y := range size {
+			tile := Tile{}
+			tile.x = x
+			tile.y = y
+			grid[x][y] = tile
+		}
 	}
 
-	var bombTiles [][]int
-	for len(bombTiles) < bombCount {
+	bombsPlaced := 0
+	for bombsPlaced < bombCount {
 		x := RandomGenerator.Intn(size)
 		y := RandomGenerator.Intn(size)
 		if !grid[x][y].isBomb {
 			grid[x][y].isBomb = true
-			bombTiles = append(bombTiles, []int{x, y})
+			forEachNeighbour(grid, x, y, func(tile Tile) {
+				grid[tile.x][tile.y].nearbyBombs++
+			})
+			bombsPlaced++
 		}
-	}
-
-	for _, coords := range bombTiles {
-		forEachNeighbour(grid, coords[0], coords[1], func(x, y int) {
-			tile := grid[x][y]
-			tile.nearbyBombs++
-			grid[x][y] = tile
-		})
 	}
 
 	return grid
 }
 
-func forEachNeighbour(grid [][]Tile, x int, y int, action func(x int, y int)) {
+func solve(grid [][]Tile, bombCount int) {
+	gridSize := len(grid)
+	tilesCount := gridSize * gridSize
+	emptyTilesCount := tilesCount - bombCount
+
+	hasFailed := false
+	x := RandomGenerator.Intn(gridSize - 1)
+	y := RandomGenerator.Intn(gridSize - 1)
+
+	for {
+		//println("Played :", x, y)
+		if grid[x][y].isBomb {
+			hasFailed = true
+			break
+		}
+
+		grid = uncoverTile(grid, x, y)
+		grid = flagTiles(grid)
+		//displayGrid(grid, false)
+		var uncoveredTilesCount = 0
+		for _, row := range grid {
+			for _, tile := range row {
+				if tile.isUncovered {
+					uncoveredTilesCount++
+				}
+			}
+		}
+		if uncoveredTilesCount == emptyTilesCount {
+			break
+		}
+
+		nextTile := getFirstSafeTile(grid)
+		if nextTile == nil {
+			hasFailed = true
+			break
+		}
+		x = nextTile.x
+		y = nextTile.y
+	}
+
+	//displayGrid(grid, false)
+
+	if hasFailed {
+		println("*BOOM*")
+	} else {
+		println("SUCCESS")
+	}
+}
+
+func displayGrid(grid [][]Tile, showAll bool) {
 	size := len(grid)
 
-	directions := [8][2]int{
-		{-1, -1}, {-1, 0}, {-1, 1},
-		{0, -1}, {0, 1},
-		{1, -1}, {1, 0}, {1, 1},
-	}
-
-	for _, dir := range directions {
-		nx, ny := x+dir[0], y+dir[1]
-		if nx >= 0 && nx < size && ny >= 0 && ny < size {
-			action(nx, ny)
-		}
-	}
-}
-
-func contains(slice [][]int, target []int) bool {
-	for _, item := range slice {
-		if reflect.DeepEqual(item, target) {
-			return true
-		}
-	}
-	return false
-}
-
-func isUncovered(uncoveredTiles [][]int, x int, y int) bool {
-	return contains(uncoveredTiles, []int{x, y})
-}
-
-func isFlagged(flaggedTiles [][]int, x int, y int) bool {
-	return contains(flaggedTiles, []int{x, y})
-}
-
-func getNeighboursLeft(grid [][]Tile, uncoveredTiles [][]int, x int, y int) [][]int {
-	var neighboursLeft [][]int
-	forEachNeighbour(grid, x, y, func(nx int, ny int) {
-		if !isUncovered(uncoveredTiles, nx, ny) {
-			neighboursLeft = append(neighboursLeft, []int{nx, ny})
-		}
-	})
-	return neighboursLeft
-}
-
-func getNearbyFlaggedBombs(grid [][]Tile, flaggedTiles [][]int, x int, y int) [][]int {
-	var flaggedBombs [][]int
-	forEachNeighbour(grid, x, y, func(x, y int) {
-		if isFlagged(flaggedTiles, x, y) {
-			flaggedBombs = append(flaggedBombs, []int{x, y})
-		}
-	})
-	return flaggedBombs
-}
-
-func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, showAll bool) {
-	size := len(grid)
-
-	for x, column := range grid {
+	for _, row := range grid {
 		print(strings.Repeat("-", size*4+1))
 		print("\n|")
-		for y, tile := range column {
-			if !showAll && isFlagged(flaggedTiles, x, y) {
+		for _, tile := range row {
+			if !showAll && tile.isFlagged {
 				print(" ⚑ ")
-			} else if !showAll && !isUncovered(uncoveredTiles, x, y) {
+			} else if !showAll && !tile.isUncovered {
 				print("███")
 			} else if tile.isBomb {
 				print(" X ")
@@ -145,114 +145,104 @@ func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, sh
 	print("\n")
 }
 
-func solve(grid [][]Tile, bombCount int) {
-	gridSize := len(grid)
-	var uncoveredTiles [][]int
-	var flaggedTiles [][]int
+func forEachNeighbour(grid [][]Tile, x, y int, action func(tile Tile)) {
+	size := len(grid)
 
-	//displayGrid(grid, uncoveredTiles, flaggedTiles, true)
-	hasFailed := false
-	x := RandomGenerator.Intn(gridSize - 1)
-	y := RandomGenerator.Intn(gridSize - 1)
-
-	for {
-		//fmt.Println("Played :", x, y)
-		if grid[x][y].isBomb {
-			hasFailed = true
-			break
-		}
-
-		uncoveredTiles = uncoverTile(grid, uncoveredTiles, x, y)
-		flaggedTiles = flagTiles(grid, uncoveredTiles, flaggedTiles)
-		//displayGrid(grid, uncoveredTiles, flaggedTiles, false)
-		if bombCount == len(flaggedTiles) && len(uncoveredTiles) == gridSize*gridSize-bombCount {
-			break
-		}
-		nextTile := getFirstSafeTile(grid, uncoveredTiles, flaggedTiles)
-		if len(nextTile) < 2 {
-			hasFailed = true
-			break
-		}
-		x = nextTile[0]
-		y = nextTile[1]
+	directions := [8][2]int{
+		{-1, -1}, {-1, 0}, {-1, 1},
+		{0, -1}, {0, 1},
+		{1, -1}, {1, 0}, {1, 1},
 	}
 
-	//displayGrid(grid, uncoveredTiles, flaggedTiles, false)
-
-	if hasFailed {
-		println("*BOOM*")
-	} else {
-		println("SUCCESS")
+	for _, dir := range directions {
+		nx, ny := x+dir[0], y+dir[1]
+		if nx >= 0 && nx < size && ny >= 0 && ny < size {
+			action(grid[nx][ny])
+		}
 	}
 }
 
-func flagTiles(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int) [][]int {
+func getNeighboursLeft(grid [][]Tile, tile Tile) []Tile {
+	var neighboursLeft []Tile
+	forEachNeighbour(grid, tile.x, tile.y, func(tile Tile) {
+		if !tile.isUncovered {
+			neighboursLeft = append(neighboursLeft, tile)
+		}
+	})
+	return neighboursLeft
+}
+
+func getNearbyFlaggedBombsCount(grid [][]Tile, tile Tile) int {
+	flaggedBombsCount := 0
+	forEachNeighbour(grid, tile.x, tile.y, func(tile Tile) {
+		if tile.isFlagged {
+			flaggedBombsCount++
+		}
+	})
+	return flaggedBombsCount
+}
+
+func flagTiles(grid [][]Tile) [][]Tile {
 	newFlag := true
 	for newFlag {
 		newFlag = false
-		for _, coords := range uncoveredTiles {
-			x := coords[0]
-			y := coords[1]
+		for _, row := range grid {
+			for _, tile := range row {
+				if !tile.isUncovered || tile.nearbyBombs == 0 {
+					continue
+				}
 
-			tile := grid[x][y]
+				neighboursLeft := getNeighboursLeft(grid, tile)
 
-			if tile.nearbyBombs == 0 {
-				continue
-			}
-
-			if len(getNeighboursLeft(grid, uncoveredTiles, x, y)) == tile.nearbyBombs {
-				forEachNeighbour(grid, x, y, func(x, y int) {
-					if !isUncovered(uncoveredTiles, x, y) && !isFlagged(flaggedTiles, x, y) {
-						newFlag = true
-						flaggedTiles = append(flaggedTiles, []int{x, y})
+				if len(neighboursLeft) == tile.nearbyBombs {
+					for _, neighbour := range neighboursLeft {
+						if !neighbour.isFlagged {
+							newFlag = true
+							grid[neighbour.x][neighbour.y].isFlagged = true
+						}
 					}
-				})
-			}
-		}
-	}
-	return flaggedTiles
-}
-
-func getFirstSafeTile(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int) []int {
-	for _, coords := range uncoveredTiles {
-		x := coords[0]
-		y := coords[1]
-
-		tile := grid[x][y]
-
-		if tile.nearbyBombs == 0 {
-			continue
-		}
-
-		if tile.nearbyBombs == len(getNearbyFlaggedBombs(grid, flaggedTiles, x, y)) &&
-			len(getNeighboursLeft(grid, uncoveredTiles, x, y)) > len(getNearbyFlaggedBombs(grid, flaggedTiles, x, y)) {
-			neighbours := getNeighboursLeft(grid, uncoveredTiles, x, y)
-			for _, tile := range neighbours {
-				nx := tile[0]
-				ny := tile[1]
-
-				if !isFlagged(flaggedTiles, nx, ny) {
-					return []int{nx, ny}
 				}
 			}
 		}
 	}
-	return []int{}
+	return grid
 }
 
-func uncoverTile(grid [][]Tile, uncoveredTiles [][]int, x int, y int) [][]int {
-	uncoveredTiles = append(uncoveredTiles, []int{x, y})
+func getFirstSafeTile(grid [][]Tile) *Tile {
+	for _, row := range grid {
+		for _, tile := range row {
+			if !tile.isUncovered || tile.nearbyBombs == 0 {
+				continue
+			}
+
+			neighboursLeft := getNeighboursLeft(grid, tile)
+			nearbyFlaggedBombsCount := getNearbyFlaggedBombsCount(grid, tile)
+			if tile.nearbyBombs == nearbyFlaggedBombsCount &&
+				len(neighboursLeft) > nearbyFlaggedBombsCount {
+				for _, neighbour := range neighboursLeft {
+					if !neighbour.isFlagged {
+						return &grid[neighbour.x][neighbour.y]
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func uncoverTile(grid [][]Tile, x int, y int) [][]Tile {
+	grid[x][y].isUncovered = true
 	tile := grid[x][y]
 
 	if tile.nearbyBombs > 0 {
-		return uncoveredTiles
+		return grid
 	}
 
-	forEachNeighbour(grid, x, y, func(nx int, ny int) {
-		if !isUncovered(uncoveredTiles, nx, ny) && !grid[nx][ny].isBomb {
-			uncoveredTiles = uncoverTile(grid, uncoveredTiles, nx, ny)
+	forEachNeighbour(grid, x, y, func(tile Tile) {
+		if !tile.isUncovered {
+			grid = uncoverTile(grid, tile.x, tile.y)
 		}
 	})
 
-	return uncoveredTiles
+	return grid
 }
