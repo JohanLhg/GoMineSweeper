@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"reflect"
 	"strings"
@@ -25,22 +26,28 @@ func generateGrid(size int, bombCount int) [][]Tile {
 		return nil
 	}
 
-	matrix := make([][]Tile, size)
-	for i := range matrix {
-		matrix[i] = make([]Tile, size)
+	grid := make([][]Tile, size)
+	for i := range grid {
+		grid[i] = make([]Tile, size)
 	}
+
+	displayGrid(grid, [][]int{}, [][]int{}, true, false)
+	fmt.Scanln()
 
 	bombsPlaced := 0
 	for bombsPlaced < bombCount {
 		i := RandomGenerator.Intn(size)
 		j := RandomGenerator.Intn(size)
-		if !matrix[i][j].isBomb {
-			matrix[i][j].isBomb = true
+		if !grid[i][j].isBomb {
+			grid[i][j].isBomb = true
 			bombsPlaced++
 		}
 	}
 
-	return matrix
+	displayGrid(grid, [][]int{}, [][]int{}, true, false)
+	fmt.Scanln()
+
+	return grid
 }
 
 func forEachNeighbour(grid [][]Tile, x int, y int, action func(x int, y int)) {
@@ -97,7 +104,7 @@ func getNearbyFlaggedBombs(grid [][]Tile, flaggedTiles [][]int, x int, y int) []
 	return flaggedBombs
 }
 
-func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, showAll bool) {
+func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, showAll bool, showHints bool) {
 	size := len(grid)
 
 	for x, column := range grid {
@@ -111,7 +118,7 @@ func displayGrid(grid [][]Tile, uncoveredTiles [][]int, flaggedTiles [][]int, sh
 				print("███")
 			} else if tile.isBomb {
 				print(" X ")
-			} else if nearbyBombs != 0 {
+			} else if showHints && nearbyBombs != 0 {
 				print(" ")
 				print(nearbyBombs)
 				print(" ")
@@ -131,21 +138,34 @@ func solve(grid [][]Tile, bombCount int) {
 	var uncoveredTiles [][]int
 	var flaggedTiles [][]int
 
-	//displayGrid(grid, uncoveredTiles, flaggedTiles, true)
+	displayGrid(grid, uncoveredTiles, flaggedTiles, false, true)
 	hasFailed := false
 	x := RandomGenerator.Intn(gridSize - 1)
 	y := RandomGenerator.Intn(gridSize - 1)
 
+	t := 3
+
 	for {
-		//fmt.Println("Played :", x, y)
+		if t > 0 {
+			fmt.Println("Played :", x, y)
+			fmt.Scanln()
+		}
 		if grid[x][y].isBomb {
 			hasFailed = true
 			break
 		}
 
 		uncoveredTiles = uncoverTile(grid, uncoveredTiles, x, y)
+		if t > 0 {
+			displayGrid(grid, uncoveredTiles, flaggedTiles, false, true)
+			fmt.Scanln()
+		}
+
 		flaggedTiles = flagTiles(grid, uncoveredTiles, flaggedTiles)
-		//displayGrid(grid, uncoveredTiles, flaggedTiles, false)
+		if t > 0 {
+			displayGrid(grid, uncoveredTiles, flaggedTiles, false, true)
+			t--
+		}
 		if bombCount == len(flaggedTiles) && len(uncoveredTiles) == gridSize*gridSize-bombCount {
 			break
 		}
@@ -158,7 +178,7 @@ func solve(grid [][]Tile, bombCount int) {
 		y = nextTile[1]
 	}
 
-	//displayGrid(grid, uncoveredTiles, flaggedTiles, false)
+	displayGrid(grid, uncoveredTiles, flaggedTiles, false, true)
 
 	if hasFailed {
 		println("*BOOM*")
