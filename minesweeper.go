@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"strings"
 	"time"
+	"sync"
 )
 
 type Tile struct {
@@ -183,27 +184,33 @@ func getNearbyFlaggedBombsCount(grid [][]Tile, tile Tile) int {
 }
 
 func flagTiles(grid [][]Tile) [][]Tile {
+	var wg sync.WaitGroup
 	newFlag := true
 	for newFlag {
 		newFlag = false
 		for _, row := range grid {
 			for _, tile := range row {
-				if !tile.isUncovered || tile.nearbyBombs == 0 {
-					continue
-				}
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if !tile.isUncovered || tile.nearbyBombs == 0 {
+						return
+					}
 
-				neighboursLeft := getNeighboursLeft(grid, tile)
+					neighboursLeft := getNeighboursLeft(grid, tile)
 
-				if len(neighboursLeft) == tile.nearbyBombs {
-					for _, neighbour := range neighboursLeft {
-						if !neighbour.isFlagged {
-							newFlag = true
-							grid[neighbour.x][neighbour.y].isFlagged = true
+					if len(neighboursLeft) == tile.nearbyBombs {
+						for _, neighbour := range neighboursLeft {
+							if !neighbour.isFlagged {
+								newFlag = true
+								grid[neighbour.x][neighbour.y].isFlagged = true
+							}
 						}
 					}
-				}
+				}()
 			}
 		}
+		wg.Wait()
 	}
 	return grid
 }
