@@ -2,8 +2,11 @@ package main
 
 import (
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type Tile struct {
@@ -13,11 +16,19 @@ type Tile struct {
 var RandomGenerator = rand.New(rand.NewSource(3))
 
 func main() {
+
+	go func() {
+		println("pprof en écoute sur http://localhost:6060")
+		http.ListenAndServe("localhost:6060", nil)
+	}()
+	
 	size := 25
 	bombCount := 75
 	grid := generateGrid(size, bombCount)
 	//displayGrid(grid, [][]int{}, [][]int{}, true)
 	solve(grid, bombCount)
+
+	time.Sleep(30 * time.Second)
 }
 
 func generateGrid(size int, bombCount int) [][]Tile {
